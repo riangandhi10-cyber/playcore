@@ -1,0 +1,16 @@
+# Render Blueprint for the PlayCore games site.
+# It serves this folder as a static website (no build step required).
+# Docs: https://render.com/docs/blueprint-spec
+services:
+  - type: web
+    name: playcore
+    runtime: static
+    buildCommand: "echo 'No build step needed — static site'"
+    staticPublishPath: .
+    headers:
+      - path: /assets/*
+        name: Cache-Control
+        value: public, max-age=86400
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff

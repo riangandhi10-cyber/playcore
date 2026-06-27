@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sky Jump · PlayCore</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="../css/game.css" />
+  </head>
+  <body>
+    <div class="gk-loading" id="loading">Loading…</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="../js/gamekit.js"></script>
+    <script>
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x6ec6ff);
+      scene.fog = new THREE.Fog(0x6ec6ff, 50, 130);
+      const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 500);
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.shadowMap.enabled = true;
+      document.body.appendChild(renderer.domElement);
+      GK.handleResize(renderer, camera);
+      const orbit = GK.orbitCamera(camera, { distance: 17, height: 4, pitch: 0.22 });
+
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x88aadd, 1.0));
+      const dir = new THREE.DirectionalLight(0xffffff, 0.7);
+      dir.position.set(10, 40, 20);
+      dir.castShadow = true;
+      scene.add(dir);
+
+      // floating clouds
+      const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+      const clouds = [];
+      for (let i = 0; i < 24; i++) {
+        const c = new THREE.Mesh(new THREE.BoxGeometry(6, 2.5, 4), cloudMat);
+        c.position.set((Math.random() - 0.5) * 80, Math.random() * 120, -20 - Math.random() * 30);
+        scene.add(c);
+        clouds.push(c);
+      }
+
+      const X_RANGE = 11,
+        Z_RANGE = 4;
+      const platforms = [];
+      const palette = [0xff6b6b, 0x4ecdc4, 0xffd93d, 0x6c5ce7, 0xff8e3c, 0x2ecc71, 0x00d2ff];
+      let highestY = 0;
+      let pi = 0;
+
+      function addPlatform(x, y, z, isStart) {
+        const w = isStart ? 8 : 3.4 + Math.random() * 1.4;
+        const d = 3;
+        const color = isStart ? 0xffffff : palette[pi++ % palette.length];
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, 0.8, d), new THREE.MeshLambertMaterial({ color }));
+        mesh.position.set(x, y, z);
+        mesh.castShadow = mesh.receiveShadow = true;
+        scene.add(mesh);
+        platforms.push({ mesh, x, y, z, w, d });
+        highestY = Math.max(highestY, y);
+      }
+
+      function generateUpTo(targetY) {
+        let y = highestY;
+        while (y < targetY) {
+          y += 3.2 + Math.random() * 2.2;
+          addPlatform((Math.random() - 0.5) * X_RANGE * 2, y, (Math.random() - 0.5) * Z_RANGE * 2);
+        }
+      }
+
+      // Player (Roblox-style avatar)
+      const player = GK.character({ scale: 0.5 });
+      scene.add(player);
+
+      const st = {
+        pos: new THREE.Vector3(0, 2, 0),
+        vel: new THREE.Vector3(),
+        started: false,
+        over: false,
+        maxY: 0,
+      };
+      const keys = GK.keys();
+
+      GK.topbar("Sky Jump");
+      const setHud = GK.hud([{ key: "score", label: "Height", value: "0" }]);
+
+      const ov = GK.overlay(
+        {
+          icon: "☁️",
+          title: "Sky Jump",
+          desc: "You bounce automatically! Steer onto the next platform and climb as high as you can. Don't fall into the sky!",
+          controls: ["W A S D — Move", "🖱️ Drag — Look around", "Scroll — Zoom"],
+          button: "▶ Start Bouncing",
+          mobileNote: "Best played on desktop with a keyboard.",
+        },
+        startGame
+      );
+
+      function reset() {
+        platforms.forEach((p) => scene.remove(p.mesh));
+        platforms.length = 0;
+        highestY = 0;
+        pi = 0;
+        addPlatform(0, 0, 0, true);
+        generateUpTo(60);
+        st.pos.set(0, 3, 0);
+        st.vel.set(0, 0, 0);
+        st.maxY = 0;
+        setHud("score", "0");
+      }
+
+      function startGame() {
+        ov.hide();
+        reset();
+        st.started = true;
+        st.over = false;
+      }
+
+      const GRAV = 30,
+        BOUNCE = 17,
+        MOVE = 12;
+
+      function update(dt) {
+        if (!st.started || st.over) return;
+
+        const fwd = (keys["KeyW"] || keys["ArrowUp"] ? 1 : 0) - (keys["KeyS"] || keys["ArrowDown"] ? 1 : 0);
+        const strafe = (keys["KeyD"] || keys["ArrowRight"] ? 1 : 0) - (keys["KeyA"] || keys["ArrowLeft"] ? 1 : 0);
+        const cf = orbit.forward(),
+          cr = orbit.right();
+        let dx = cf.x * fwd + cr.x * strafe,
+          dz = cf.z * fwd + cr.z * strafe;
+        const mlen = Math.hypot(dx, dz) || 1;
+        dx = (dx / mlen) * (fwd || strafe ? 1 : 0);
+        dz = (dz / mlen) * (fwd || strafe ? 1 : 0);
+        st.pos.x += dx * MOVE * dt;
+        st.pos.z += dz * MOVE * dt;
+        st.pos.x = Math.max(-X_RANGE - 2, Math.min(X_RANGE + 2, st.pos.x));
+        st.pos.z = Math.max(-Z_RANGE - 2, Math.min(Z_RANGE + 2, st.pos.z));
+
+        st.vel.y -= GRAV * dt;
+        const prevY = st.pos.y;
+        st.pos.y += st.vel.y * dt;
+
+        // bounce on platform tops when falling
+        if (st.vel.y <= 0) {
+          for (const p of platforms) {
+            const topY = p.mesh.position.y + 0.4;
+            const withinX = Math.abs(st.pos.x - p.x) <= p.w / 2 + 0.5;
+            const withinZ = Math.abs(st.pos.z - p.z) <= p.d / 2 + 0.5;
+            if (withinX && withinZ && prevY >= topY - 0.2 && st.pos.y <= topY + 0.2) {
+              st.pos.y = topY;
+              st.vel.y = BOUNCE;
+              break;
+            }
+          }
+        }
+
+        // height score
+        st.maxY = Math.max(st.maxY, st.pos.y);
+        setHud("score", Math.floor(st.maxY));
+
+        // generate more platforms above
+        generateUpTo(st.pos.y + 70);
+        // cull below
+        for (let i = platforms.length - 1; i >= 0; i--) {
+          if (platforms[i].mesh.position.y < st.maxY - 30) {
+            scene.remove(platforms[i].mesh);
+            platforms.splice(i, 1);
+          }
+        }
+
+        // fell too far
+        if (st.pos.y < st.maxY - 22) return gameOver();
+
+        player.position.copy(st.pos);
+        const moving = !!(fwd || strafe);
+        if (moving) player.rotation.y = Math.atan2(dx, dz);
+        player.userData.update(dt, moving);
+
+        // orbit camera follows
+        orbit.update(new THREE.Vector3(st.pos.x, st.pos.y, st.pos.z), dt);
+      }
+
+      function gameOver() {
+        st.over = true;
+        st.started = false;
+        ov.setContent(
+          {
+            scoreBig: Math.floor(st.maxY),
+            icon: "☁️",
+            title: "Down You Go!",
+            desc: `You reached a height of ${Math.floor(st.maxY)}. Higher next time?`,
+            button: "↻ Try Again",
+          },
+          () => {
+            ov.hide();
+            startGame();
+          }
+        );
+        ov.show();
+      }
+
+      let last = performance.now();
+      function loop(now) {
+        const dt = Math.min((now - last) / 1000, 0.05);
+        last = now;
+        update(dt);
+        renderer.render(scene, camera);
+        requestAnimationFrame(loop);
+      }
+      document.getElementById("loading").remove();
+      camera.position.set(0, 8, 18);
+      camera.lookAt(0, 4, 0);
+      requestAnimationFrame(loop);
+    </script>
+  </body>
+</html>

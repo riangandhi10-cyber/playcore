@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cube Maze · PlayCore</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="../css/game.css" />
+  </head>
+  <body>
+    <div class="gk-loading" id="loading">Loading…</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="../js/gamekit.js"></script>
+    <script>
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x16101f);
+      scene.fog = new THREE.Fog(0x16101f, 50, 110);
+      const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 500);
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.shadowMap.enabled = true;
+      document.body.appendChild(renderer.domElement);
+      GK.handleResize(renderer, camera);
+      const orbit = GK.orbitCamera(camera, { distance: 18, height: 5, pitch: 0.62 });
+
+      scene.add(new THREE.HemisphereLight(0xbfa8ff, 0x301a40, 1.0));
+      const dir = new THREE.DirectionalLight(0xffffff, 0.8);
+      dir.position.set(20, 50, 30);
+      dir.castShadow = true;
+      dir.shadow.mapSize.set(2048, 2048);
+      dir.shadow.camera.left = dir.shadow.camera.bottom = -80;
+      dir.shadow.camera.right = dir.shadow.camera.top = 80;
+      scene.add(dir);
+
+      const N = 9,
+        C = 6,
+        T = 0.8,
+        H = 4;
+      const mazeGroup = new THREE.Group();
+      scene.add(mazeGroup);
+      let walls = []; // AABBs
+      let goal = { x: 0, z: 0 };
+      let goalMesh = null;
+
+      // Floor
+      const floorSize = N * C + 8;
+      const floor = new THREE.Mesh(
+        new THREE.PlaneGeometry(floorSize, floorSize),
+        new THREE.MeshLambertMaterial({ color: 0x241733 })
+      );
+      floor.rotation.x = -Math.PI / 2;
+      floor.position.set((N * C) / 2 - C / 2, -0.5, (N * C) / 2 - C / 2);
+      floor.receiveShadow = true;
+      scene.add(floor);
+
+      function generateMaze() {
+        // reset
+        while (mazeGroup.children.length) mazeGroup.remove(mazeGroup.children[0]);
+        walls = [];
+        const cells = [];
+        for (let i = 0; i < N; i++) {
+          cells[i] = [];
+          for (let j = 0; j < N; j++) cells[i][j] = { n: true, s: true, e: true, w: true, v: false };
+        }
+        // recursive backtracker
+        const stack = [[0, 0]];
+        cells[0][0].v = true;
+        while (stack.length) {
+          const [i, j] = stack[stack.length - 1];
+          const nb = [];
+          if (i > 0 && !cells[i - 1][j].v) nb.push([i - 1, j, "w", "e"]);
+          if (i < N - 1 && !cells[i + 1][j].v) nb.push([i + 1, j, "e", "w"]);
+          if (j > 0 && !cells[i][j - 1].v) nb.push([i, j - 1, "n", "s"]);
+          if (j < N - 1 && !cells[i][j + 1].v) nb.push([i, j + 1, "s", "n"]);
+          if (!nb.length) {
+            stack.pop();
+            continue;
+          }
+          const [ni, nj, a, b] = nb[(Math.random() * nb.length) | 0];
+          cells[i][j][a] = false;
+          cells[ni][nj][b] = false;
+          cells[ni][nj].v = true;
+          stack.push([ni, nj]);
+        }
+
+        const wallMat = new THREE.MeshLambertMaterial({ color: 0x7c4dff });
+        function addWall(cx, cz, sx, sz) {
+          const m = new THREE.Mesh(new THREE.BoxGeometry(sx, H, sz), wallMat);
+          m.position.set(cx, H / 2 - 0.5, cz);
+          m.castShadow = m.receiveShadow = true;
+          mazeGroup.add(m);
+          walls.push({ minX: cx - sx / 2, maxX: cx + sx / 2, minZ: cz - sz / 2, maxZ: cz + sz / 2 });
+        }
+
+        const seen = new Set();
+        function key(x, z, t) {
+          return t + Math.round(x * 10) + "_" + Math.round(z * 10);
+        }
+        for (let i = 0; i < N; i++) {
+          for (let j = 0; j < N; j++) {
+            const cx = i * C,
+              cz = j * C;
+            const c = cells[i][j];
+            if (c.e) {
+              const x = cx + C / 2,
+                z = cz,
+                k = key(x, z, "v");
+              if (!seen.has(k)) { seen.add(k); addWall(x, z, T, C + T); }
+            }
+            if (c.w) {
+              const x = cx - C / 2,
+                z = cz,
+                k = key(x, z, "v");
+              if (!seen.has(k)) { seen.add(k); addWall(x, z, T, C + T); }
+            }
+            if (c.s) {
+              const x = cx,
+                z = cz + C / 2,
+                k = key(x, z, "h");
+              if (!seen.has(k)) { seen.add(k); addWall(x, z, C + T, T); }
+            }
+            if (c.n) {
+              const x = cx,
+                z = cz - C / 2,
+                k = key(x, z, "h");
+              if (!seen.has(k)) { seen.add(k); addWall(x, z, C + T, T); }
+            }
+          }
+        }
+
+        // goal pad at far corner
+        goal = { x: (N - 1) * C, z: (N - 1) * C };
+        goalMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(C - 1.5, 0.4, C - 1.5),
+          new THREE.MeshLambertMaterial({ color: 0xffd700, emissive: 0x665500 })
+        );
+        goalMesh.position.set(goal.x, -0.2, goal.z);
+        mazeGroup.add(goalMesh);
+      }
+
+      // Player (Roblox-style avatar)
+      const player = GK.character({ scale: 0.6 });
+      scene.add(player);
+      const PR = 0.9; // player half-extent for collision
+
+      const st = { x: 0, z: 0, started: false, over: false, time: 0 };
+      const keys = GK.keys();
+
+      GK.topbar("Cube Maze");
+      const setHud = GK.hud([{ key: "time", label: "Time", value: "0.0s" }]);
+
+      const ov = GK.overlay(
+        {
+          icon: "🌀",
+          title: "Cube Maze",
+          desc: "Guide your character through the maze and reach the golden pad in the far corner. A new maze every time!",
+          controls: ["W A S D — Move", "🖱️ Drag — Look around", "Scroll — Zoom"],
+          button: "▶ Enter Maze",
+          mobileNote: "Best played on desktop with a keyboard.",
+        },
+        startGame
+      );
+
+      function collides(x, z) {
+        for (const w of walls) {
+          if (x + PR > w.minX && x - PR < w.maxX && z + PR > w.minZ && z - PR < w.maxZ) return true;
+        }
+        return false;
+      }
+
+      function startGame() {
+        ov.hide();
+        generateMaze();
+        st.x = 0;
+        st.z = 0;
+        st.time = 0;
+        st.started = true;
+        st.over = false;
+        player.position.set(0, -0.5, 0);
+      }
+
+      const MOVE = 11;
+      function update(dt) {
+        if (!st.started || st.over) return;
+        st.time += dt;
+        setHud("time", st.time.toFixed(1) + "s");
+
+        const fwd = (keys["KeyW"] || keys["ArrowUp"] ? 1 : 0) - (keys["KeyS"] || keys["ArrowDown"] ? 1 : 0);
+        const strafe = (keys["KeyD"] || keys["ArrowRight"] ? 1 : 0) - (keys["KeyA"] || keys["ArrowLeft"] ? 1 : 0);
+        const cf = orbit.forward(),
+          cr = orbit.right();
+        let mx = cf.x * fwd + cr.x * strafe,
+          mz = cf.z * fwd + cr.z * strafe;
+        const len = Math.hypot(mx, mz) || 1;
+        const moving = !!(fwd || strafe);
+        const stepX = (mx / len) * MOVE * dt * (moving ? 1 : 0);
+        const stepZ = (mz / len) * MOVE * dt * (moving ? 1 : 0);
+        // axis-separated collision
+        if (!collides(st.x + stepX, st.z)) st.x += stepX;
+        if (!collides(st.x, st.z + stepZ)) st.z += stepZ;
+
+        player.position.set(st.x, -0.5, st.z);
+        if (moving) player.rotation.y = Math.atan2(mx, mz);
+        player.userData.update(dt, moving);
+
+        // reach goal
+        if (Math.hypot(st.x - goal.x, st.z - goal.z) < 2.5) return win();
+
+        // orbit camera follows
+        orbit.update(new THREE.Vector3(st.x, 0, st.z), dt);
+      }
+
+      function win() {
+        st.over = true;
+        st.started = false;
+        ov.setContent(
+          {
+            scoreBig: st.time.toFixed(1) + "s",
+            icon: "🏆",
+            title: "Escaped!",
+            desc: "You found the exit. A fresh maze awaits — beat your time!",
+            button: "↻ New Maze",
+          },
+          () => {
+            ov.hide();
+            startGame();
+          }
+        );
+        ov.show();
+      }
+
+      let last = performance.now();
+      function loop(now) {
+        const dt = Math.min((now - last) / 1000, 0.05);
+        last = now;
+        if (goalMesh) goalMesh.position.y = -0.2 + Math.sin(now / 300) * 0.15;
+        update(dt);
+        renderer.render(scene, camera);
+        requestAnimationFrame(loop);
+      }
+      document.getElementById("loading").remove();
+      camera.position.set(0, 24, 18);
+      camera.lookAt(0, 0, 0);
+      requestAnimationFrame(loop);
+    </script>
+  </body>
+</html>

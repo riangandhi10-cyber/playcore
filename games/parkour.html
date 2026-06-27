@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Block Parkour · PlayCore</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="../css/game.css" />
+  </head>
+  <body>
+    <div class="gk-loading" id="loading">Loading…</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="../js/gamekit.js"></script>
+    <script>
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x87ceeb);
+      scene.fog = new THREE.Fog(0x87ceeb, 60, 160);
+
+      const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 500);
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      document.body.appendChild(renderer.domElement);
+      GK.handleResize(renderer, camera);
+      const orbit = GK.orbitCamera(camera, { distance: 13, height: 3.2, pitch: 0.42 });
+
+      // Lights
+      const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+      sun.position.set(30, 60, 20);
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(2048, 2048);
+      sun.shadow.camera.left = -80;
+      sun.shadow.camera.right = 80;
+      sun.shadow.camera.top = 80;
+      sun.shadow.camera.bottom = -80;
+      scene.add(sun);
+      scene.add(new THREE.HemisphereLight(0xbfe3ff, 0x4a6b3a, 0.7));
+
+      // Clouds for atmosphere
+      const cloudMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+      for (let i = 0; i < 14; i++) {
+        const c = new THREE.Mesh(new THREE.BoxGeometry(8, 3, 5), cloudMat);
+        c.position.set((Math.random() - 0.5) * 200, 30 + Math.random() * 40, (Math.random() - 0.5) * 200 - 40);
+        scene.add(c);
+      }
+
+      // ---- Course platforms ----
+      const platforms = [];
+      function addPlatform(x, y, z, w, d, color, opts = {}) {
+        const h = 1;
+        const mat = new THREE.MeshLambertMaterial({ color });
+        const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+        mesh.position.set(x, y, z);
+        mesh.receiveShadow = true;
+        mesh.castShadow = true;
+        scene.add(mesh);
+        const p = { mesh, x, y, z, w, h, d, ...opts, baseX: x, baseZ: z };
+        platforms.push(p);
+        return p;
+      }
+
+      // Start pad
+      addPlatform(0, 0, 0, 8, 8, 0x4caf50);
+      // Stepping path upward, alternating colors
+      const palette = [0xff6b6b, 0x4ecdc4, 0xffd93d, 0x6c5ce7, 0xff8e3c, 0x2ecc71];
+      let px = 0,
+        py = 0,
+        pz = 0;
+      for (let i = 0; i < 16; i++) {
+        pz -= 7 + Math.random() * 2;
+        py += 1.5 + Math.random() * 1.5;
+        px += (Math.random() - 0.5) * 10;
+        const size = 4 + Math.random() * 2;
+        addPlatform(px, py, pz, size, size, palette[i % palette.length]);
+      }
+      // Two moving platforms in the middle of the course
+      const mid = platforms[8];
+      addPlatform(mid.x + 6, mid.y + 2, mid.z - 6, 4, 4, 0x00d2ff, {
+        move: { axis: "x", range: 7, speed: 1.4 },
+      });
+      const mid2 = platforms[12];
+      addPlatform(mid2.x - 5, mid2.y + 2, mid2.z - 6, 4, 4, 0x00d2ff, {
+        move: { axis: "z", range: 6, speed: 1.7 },
+      });
+
+      // Goal platform (gold) at the very end
+      pz -= 9;
+      py += 2;
+      const goal = addPlatform(px, py, pz, 7, 7, 0xffd700);
+      // Trophy on the goal
+      const trophy = new THREE.Mesh(
+        new THREE.CylinderGeometry(1, 1.4, 3, 6),
+        new THREE.MeshLambertMaterial({ color: 0xffe14d, emissive: 0x665500 })
+      );
+      trophy.position.set(goal.x, goal.y + 2.5, goal.z);
+      trophy.castShadow = true;
+      scene.add(trophy);
+
+      // ---- Player (Roblox-style avatar) ----
+      const player = GK.character({ scale: 0.55 });
+      scene.add(player);
+
+      const HALF = 0.6; // player horizontal half-extent
+      const state = {
+        pos: new THREE.Vector3(0, 2, 0),
+        vel: new THREE.Vector3(),
+        grounded: false,
+        started: false,
+        falls: 0,
+        time: 0,
+        won: false,
+      };
+
+      const keys = GK.keys();
+
+      GK.topbar("Block Parkour");
+      const setHud = GK.hud([
+        { key: "time", label: "Time", value: "0.0s" },
+        { key: "falls", label: "Falls", value: "0" },
+      ]);
+
+      const ov = GK.overlay(
+        {
+          icon: "🟩",
+          title: "Block Parkour",
+          desc: "Hop across the floating blocks and reach the golden trophy. Don't fall!",
+          controls: ["W A S D — Move", "Space — Jump", "🖱️ Drag — Look around", "Scroll — Zoom"],
+          button: "▶ Start Climbing",
+          mobileNote: "Best played on desktop with a keyboard.",
+        },
+        startGame
+      );
+
+      function startGame() {
+        ov.hide();
+        respawn();
+        state.started = true;
+        state.time = 0;
+        state.falls = 0;
+        state.won = false;
+        setHud("falls", "0");
+      }
+
+      function respawn() {
+        state.pos.set(0, 3, 0);
+        state.vel.set(0, 0, 0);
+      }
+
+      const GRAV = 38;
+      const MOVE = 9;
+      const JUMP = 14;
+
+      function update(dt) {
+        if (!state.started || state.won) return;
+        state.time += dt;
+        setHud("time", state.time.toFixed(1) + "s");
+
+        // Move moving platforms
+        platforms.forEach((p) => {
+          if (p.move) {
+            const off = Math.sin(state.time * p.move.speed) * p.move.range;
+            if (p.move.axis === "x") p.mesh.position.x = p.baseX + off;
+            else p.mesh.position.z = p.baseZ + off;
+            p.x = p.mesh.position.x;
+            p.z = p.mesh.position.z;
+          }
+        });
+
+        // Camera-relative input (Roblox style)
+        const fwd = (keys["KeyW"] || keys["ArrowUp"] ? 1 : 0) - (keys["KeyS"] || keys["ArrowDown"] ? 1 : 0);
+        const strafe = (keys["KeyD"] || keys["ArrowRight"] ? 1 : 0) - (keys["KeyA"] || keys["ArrowLeft"] ? 1 : 0);
+        const f = orbit.forward(),
+          r = orbit.right();
+        let mx = f.x * fwd + r.x * strafe,
+          mz = f.z * fwd + r.z * strafe;
+        const len = Math.hypot(mx, mz) || 1;
+        const moving = !!(fwd || strafe);
+        state.pos.x += (mx / len) * MOVE * dt * (moving ? 1 : 0);
+        state.pos.z += (mz / len) * MOVE * dt * (moving ? 1 : 0);
+
+        if (moving) player.rotation.y = Math.atan2(mx, mz);
+        player.userData.update(dt, moving);
+
+        // Jump
+        if ((keys["Space"]) && state.grounded) {
+          state.vel.y = JUMP;
+          state.grounded = false;
+        }
+
+        // Gravity
+        state.vel.y -= GRAV * dt;
+        const prevY = state.pos.y;
+        state.pos.y += state.vel.y * dt;
+
+        // Platform collision (landing on top)
+        state.grounded = false;
+        if (state.vel.y <= 0) {
+          for (const p of platforms) {
+            const topY = p.mesh.position.y + p.h / 2;
+            const withinX = Math.abs(state.pos.x - p.mesh.position.x) <= p.w / 2 + HALF;
+            const withinZ = Math.abs(state.pos.z - p.mesh.position.z) <= p.d / 2 + HALF;
+            if (withinX && withinZ && prevY >= topY - 0.1 && state.pos.y <= topY + 0.05) {
+              state.pos.y = topY;
+              state.vel.y = 0;
+              state.grounded = true;
+              // ride moving platforms
+              if (p.move) {
+                const off = Math.sin(state.time * p.move.speed) * p.move.range;
+                const prevOff = Math.sin((state.time - dt) * p.move.speed) * p.move.range;
+                if (p.move.axis === "x") state.pos.x += off - prevOff;
+                else state.pos.z += off - prevOff;
+              }
+              break;
+            }
+          }
+        }
+
+        // Fell off the world
+        if (state.pos.y < -25) {
+          state.falls++;
+          setHud("falls", state.falls);
+          GK.toast("💥 You fell! Try again");
+          respawn();
+        }
+
+        // Reached goal?
+        const dGoal = Math.hypot(state.pos.x - goal.x, state.pos.z - goal.z);
+        if (dGoal < 3 && Math.abs(state.pos.y - (goal.y + goal.h / 2)) < 1.5) {
+          win();
+        }
+
+        player.position.copy(state.pos);
+
+        // Orbit follow camera
+        orbit.update(new THREE.Vector3(state.pos.x, state.pos.y + 1.4, state.pos.z), dt);
+      }
+
+      function win() {
+        state.won = true;
+        ov.setContent(
+          {
+            scoreBig: state.time.toFixed(1) + "s",
+            icon: "🏆",
+            title: "You reached the goal!",
+            desc: `Falls: ${state.falls}. Think you can do it faster?`,
+            button: "↻ Play Again",
+          },
+          () => {
+            ov.hide();
+            startGame();
+          }
+        );
+        ov.show();
+      }
+
+      // Spin trophy
+      let last = performance.now();
+      function loop(now) {
+        const dt = Math.min((now - last) / 1000, 0.05);
+        last = now;
+        trophy.rotation.y += dt * 2;
+        update(dt);
+        renderer.render(scene, camera);
+        requestAnimationFrame(loop);
+      }
+      document.getElementById("loading").remove();
+      camera.position.set(0, 6, 14);
+      requestAnimationFrame(loop);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,224 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+  background: #0e1320;
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  color: #fff;
+  user-select: none;
+}
+
+canvas {
+  display: block;
+}
+
+/* Top bar */
+.gk-topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 18px;
+  pointer-events: none;
+}
+
+.gk-back {
+  pointer-events: auto;
+  background: rgba(14, 19, 32, 0.7);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  padding: 10px 16px;
+  border-radius: 999px;
+  cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+
+.gk-back:hover {
+  transform: translateX(-2px);
+  background: rgba(108, 92, 231, 0.85);
+}
+
+.gk-title {
+  font-weight: 800;
+  font-size: 18px;
+  letter-spacing: -0.3px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+/* HUD */
+.gk-hud {
+  position: fixed;
+  top: 64px;
+  left: 18px;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.gk-stat {
+  background: rgba(14, 19, 32, 0.6);
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 8px 14px;
+  font-size: 15px;
+  font-weight: 700;
+  min-width: 120px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.gk-stat .label {
+  color: #95a0c4;
+  font-weight: 600;
+}
+
+/* Center toast */
+.gk-toast {
+  position: fixed;
+  top: 22%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 18;
+  background: rgba(14, 19, 32, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  padding: 12px 22px;
+  border-radius: 14px;
+  font-weight: 800;
+  font-size: 18px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+  text-align: center;
+}
+
+.gk-toast.show {
+  opacity: 1;
+}
+
+/* Overlay (start / game over) */
+.gk-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(900px 500px at 50% 30%, rgba(40, 30, 80, 0.85), rgba(8, 12, 22, 0.94));
+  backdrop-filter: blur(6px);
+  transition: opacity 0.25s ease;
+}
+
+.gk-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.gk-panel {
+  text-align: center;
+  max-width: 460px;
+  padding: 40px 36px;
+  background: rgba(24, 32, 57, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 24px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+
+.gk-panel .ico {
+  font-size: 72px;
+  margin-bottom: 8px;
+  filter: drop-shadow(0 10px 20px rgba(0, 0, 0, 0.4));
+}
+
+.gk-panel h1 {
+  font-size: 32px;
+  letter-spacing: -0.8px;
+  margin-bottom: 10px;
+}
+
+.gk-panel p {
+  color: #b9c2e0;
+  font-size: 15.5px;
+  line-height: 1.6;
+  margin-bottom: 22px;
+}
+
+.gk-panel .controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  margin-bottom: 24px;
+}
+
+.gk-key {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.gk-btn {
+  border: none;
+  cursor: pointer;
+  font-weight: 800;
+  font-size: 17px;
+  padding: 14px 34px;
+  border-radius: 999px;
+  color: #fff;
+  background: linear-gradient(135deg, #6c5ce7, #00d2ff);
+  box-shadow: 0 12px 30px rgba(108, 92, 231, 0.4);
+  transition: transform 0.12s ease;
+}
+
+.gk-btn:hover {
+  transform: translateY(-2px);
+}
+
+.gk-score-big {
+  font-size: 44px;
+  font-weight: 800;
+  background: linear-gradient(135deg, #00d2ff, #ff5e9c);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  margin-bottom: 6px;
+}
+
+.gk-loading {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: #0e1320;
+  z-index: 40;
+  font-weight: 700;
+  color: #95a0c4;
+}
+
+.gk-mobile-note {
+  font-size: 12.5px;
+  color: #7c87aa;
+  margin-top: 14px;
+}

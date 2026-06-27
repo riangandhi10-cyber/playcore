@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PlayCore · Play Free 3D Games Online</title>
+    <meta name="description" content="PlayCore is your hub for free 3D browser games. Play parkour, racing, shooters and more — no downloads, just play!" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="css/style.css" />
+    <link rel="icon" href="assets/playcore-logo.png" />
+  </head>
+  <body>
+    <header>
+      <nav class="nav">
+        <a class="logo" href="index.html" aria-label="PlayCore home">
+          <img src="assets/playcore-logo.png" alt="PlayCore" class="logo-img" />
+        </a>
+        <div class="search">
+          <span class="icon">🔍</span>
+          <input id="search" type="text" placeholder="Search games..." autocomplete="off" />
+        </div>
+        <div class="nav-spacer"></div>
+        <button class="btn" id="hero-play">▶ Play Now</button>
+      </nav>
+      <div class="chips" id="chips"></div>
+    </header>
+
+    <main class="container">
+      <section class="hero">
+        <div class="hero-inner">
+          <div class="hero-text">
+            <span class="tag">⚡ Featured</span>
+            <h1>Play instantly.<br />No downloads.</h1>
+            <p>Dive into a world of blocky 3D games built right in your browser. Jump, race, build and blast — all for free.</p>
+            <button class="btn" onclick="document.getElementById('hero-play').click()">🚀 Start Playing</button>
+          </div>
+          <div class="hero-art">🎮</div>
+        </div>
+      </section>
+
+      <section class="section">
+        <div class="section-head">
+          <h2>All Games</h2>
+          <span class="count" id="count"></span>
+        </div>
+        <div class="grid" id="grid"></div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="container footer-inner">
+        <div>🎮 <b>PlayCore</b> — free 3D browser games.</div>
+        <div>Built with Three.js · Works best on desktop with a keyboard.</div>
+      </div>
+    </footer>
+
+    <script src="js/portal.js"></script>
+  </body>
+</html>

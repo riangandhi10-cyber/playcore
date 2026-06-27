@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Tower Stacker · PlayCore</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="../css/game.css" />
+  </head>
+  <body>
+    <div class="gk-loading" id="loading">Loading…</div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="../js/gamekit.js"></script>
+    <script>
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x1a1030);
+      const camera = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.1, 500);
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      document.body.appendChild(renderer.domElement);
+      GK.handleResize(renderer, camera);
+
+      scene.add(new THREE.HemisphereLight(0xffffff, 0x44335a, 1.0));
+      const dir = new THREE.DirectionalLight(0xffffff, 0.6);
+      dir.position.set(10, 30, 20);
+      scene.add(dir);
+
+      const BH = 2; // block height
+      const stack = []; // placed blocks: {mesh, x,z,w,d,y}
+      const debris = []; // falling cut-offs
+      let current = null; // moving block
+      let axis = "x";
+      let dirSign = 1;
+      let score = 0;
+      let started = false;
+      let over = false;
+      let hue = 200;
+
+      function colorFor(i) {
+        hue = (hue + 18) % 360;
+        return new THREE.Color(`hsl(${hue}, 65%, 58%)`);
+      }
+
+      function makeMesh(w, d, color) {
+        const m = new THREE.Mesh(new THREE.BoxGeometry(w, BH, d), new THREE.MeshLambertMaterial({ color }));
+        return m;
+      }
+
+      GK.topbar("Tower Stacker");
+      const setHud = GK.hud([{ key: "score", label: "Height", value: "0" }]);
+
+      const ov = GK.overlay(
+        {
+          icon: "🧱",
+          title: "Tower Stacker",
+          desc: "A block slides back and forth. Click, tap or press Space to drop it. Line it up perfectly to keep your tower wide!",
+          controls: ["Click / Tap", "or Space — Drop"],
+          button: "▶ Start Stacking",
+        },
+        startGame
+      );
+
+      function reset() {
+        [...stack, ...debris.map((d) => d.mesh)].forEach((m) => scene.remove(m.mesh || m));
+        stack.length = 0;
+        debris.length = 0;
+        if (current) scene.remove(current.mesh);
+        current = null;
+        score = 0;
+        hue = 200;
+        setHud("score", "0");
+        // base block
+        const base = { mesh: makeMesh(10, 10, colorFor()), x: 0, z: 0, w: 10, d: 10, y: 0 };
+        base.mesh.position.set(0, 0, 0);
+        scene.add(base.mesh);
+        stack.push(base);
+        spawn();
+      }
+
+      function spawn() {
+        const top = stack[stack.length - 1];
+        axis = stack.length % 2 === 1 ? "x" : "z";
+        dirSign = 1;
+        const w = top.w,
+          d = top.d;
+        const y = top.y + BH;
+        const mesh = makeMesh(w, d, colorFor());
+        const startOff = 14;
+        const x = axis === "x" ? -startOff : top.x;
+        const z = axis === "z" ? -startOff : top.z;
+        mesh.position.set(x, y, z);
+        scene.add(mesh);
+        current = { mesh, x, z, w, d, y };
+      }
+
+      function startGame() {
+        ov.hide();
+        reset();
+        started = true;
+        over = false;
+      }
+
+      function drop() {
+        if (!started || over || !current) return;
+        const top = stack[stack.length - 1];
+        let overlap, newCenter, cutSize, cutCenter;
+        if (axis === "x") {
+          const delta = current.mesh.position.x - top.x;
+          overlap = current.w - Math.abs(delta);
+          if (overlap <= 0) return gameOver();
+          newCenter = top.x + delta / 2;
+          // build trimmed block
+          current.w = overlap;
+          current.x = newCenter;
+          current.mesh.geometry.dispose();
+          current.mesh.geometry = new THREE.BoxGeometry(overlap, BH, current.d);
+          current.mesh.position.x = newCenter;
+          // debris piece
+          if (Math.abs(delta) > 0.05) {
+            cutSize = Math.abs(delta);
+            cutCenter = newCenter + (delta > 0 ? overlap / 2 + cutSize / 2 : -overlap / 2 - cutSize / 2);
+            addDebris(cutSize, current.d, current.mesh.position.y, cutCenter, current.z, current.mesh.material.color, delta > 0 ? 1 : -1, "x");
+          }
+        } else {
+          const delta = current.mesh.position.z - top.z;
+          overlap = current.d - Math.abs(delta);
+          if (overlap <= 0) return gameOver();
+          newCenter = top.z + delta / 2;
+          current.d = overlap;
+          current.z = newCenter;
+          current.mesh.geometry.dispose();
+          current.mesh.geometry = new THREE.BoxGeometry(current.w, BH, overlap);
+          current.mesh.position.z = newCenter;
+          if (Math.abs(delta) > 0.05) {
+            cutSize = Math.abs(delta);
+            cutCenter = newCenter + (delta > 0 ? overlap / 2 + cutSize / 2 : -overlap / 2 - cutSize / 2);
+            addDebris(current.w, cutSize, current.mesh.position.y, current.x, cutCenter, current.mesh.material.color, delta > 0 ? 1 : -1, "z");
+          }
+        }
+
+        const perfect = Math.abs(axis === "x" ? current.mesh.position.x - top.x : current.mesh.position.z - top.z) < 0.35;
+        stack.push(current);
+        score++;
+        setHud("score", score);
+        if (perfect) GK.toast("✨ Perfect!", 700);
+        current = null;
+        spawn();
+      }
+
+      function addDebris(w, d, y, x, z, color, sign, ax) {
+        const mesh = makeMesh(w, d, color.clone());
+        mesh.position.set(x, y, z);
+        scene.add(mesh);
+        debris.push({ mesh, vy: 0, vrot: (Math.random() - 0.5) * 4, life: 2 });
+      }
+
+      function gameOver() {
+        over = true;
+        // last block topples
+        if (current) {
+          debris.push({ mesh: current.mesh, vy: 0, vrot: 3, life: 2 });
+          current = null;
+        }
+        ov.setContent(
+          {
+            scoreBig: score,
+            icon: "🧱",
+            title: "Tower Toppled!",
+            desc: `You stacked ${score} block${score === 1 ? "" : "s"} high.`,
+            button: "↻ Try Again",
+          },
+          () => {
+            ov.hide();
+            startGame();
+          }
+        );
+        ov.show();
+        started = false;
+      }
+
+      window.addEventListener("pointerdown", drop);
+      window.addEventListener("keydown", (e) => {
+        if (e.code === "Space") {
+          e.preventDefault();
+          drop();
+        }
+      });
+
+      const SPEED = 9;
+      let targetCamY = 12;
+      function update(dt) {
+        if (current && started && !over) {
+          const range = 14;
+          const p = current.mesh.position;
+          if (axis === "x") {
+            p.x += dirSign * SPEED * dt;
+            if (p.x > range) dirSign = -1;
+            if (p.x < -range) dirSign = 1;
+            current.x = p.x;
+          } else {
+            p.z += dirSign * SPEED * dt;
+            if (p.z > range) dirSign = -1;
+            if (p.z < -range) dirSign = 1;
+            current.z = p.z;
+          }
+        }
+        // debris physics
+        for (let i = debris.length - 1; i >= 0; i--) {
+          const d = debris[i];
+          d.vy -= 30 * dt;
+          d.mesh.position.y += d.vy * dt;
+          d.mesh.rotation.z += d.vrot * dt;
+          d.mesh.rotation.x += d.vrot * 0.5 * dt;
+          d.life -= dt;
+          if (d.life <= 0 || d.mesh.position.y < -30) {
+            scene.remove(d.mesh);
+            debris.splice(i, 1);
+          }
+        }
+        // camera follows top
+        const topY = stack.length ? stack[stack.length - 1].y : 0;
+        targetCamY = topY + 12;
+        camera.position.y += (targetCamY - camera.position.y) * Math.min(1, dt * 3);
+        camera.lookAt(0, topY - 2, 0);
+      }
+
+      let last = performance.now();
+      function loop(now) {
+        const dt = Math.min((now - last) / 1000, 0.05);
+        last = now;
+        update(dt);
+        renderer.render(scene, camera);
+        requestAnimationFrame(loop);
+      }
+      document.getElementById("loading").remove();
+      camera.position.set(16, 12, 16);
+      camera.lookAt(0, 0, 0);
+      requestAnimationFrame(loop);
+    </script>
+  </body>
+</html>
