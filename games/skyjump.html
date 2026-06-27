@@ -77,6 +77,7 @@
         maxY: 0,
       };
       const keys = GK.keys();
+      const touch = GK.touchControls({ joystick: true });
 
       GK.topbar("Sky Jump");
       const setHud = GK.hud([{ key: "score", label: "Height", value: "0" }]);
@@ -120,15 +121,17 @@
       function update(dt) {
         if (!st.started || st.over) return;
 
-        const fwd = (keys["KeyW"] || keys["ArrowUp"] ? 1 : 0) - (keys["KeyS"] || keys["ArrowDown"] ? 1 : 0);
-        const strafe = (keys["KeyD"] || keys["ArrowRight"] ? 1 : 0) - (keys["KeyA"] || keys["ArrowLeft"] ? 1 : 0);
+        const tv = touch.vector();
+        const fwd = (keys["KeyW"] || keys["ArrowUp"] ? 1 : 0) - (keys["KeyS"] || keys["ArrowDown"] ? 1 : 0) + tv.y;
+        const strafe = (keys["KeyD"] || keys["ArrowRight"] ? 1 : 0) - (keys["KeyA"] || keys["ArrowLeft"] ? 1 : 0) + tv.x;
         const cf = orbit.forward(),
           cr = orbit.right();
         let dx = cf.x * fwd + cr.x * strafe,
           dz = cf.z * fwd + cr.z * strafe;
-        const mlen = Math.hypot(dx, dz) || 1;
-        dx = (dx / mlen) * (fwd || strafe ? 1 : 0);
-        dz = (dz / mlen) * (fwd || strafe ? 1 : 0);
+        const mlen = Math.hypot(dx, dz);
+        const moving = mlen > 0.18;
+        dx = moving ? dx / mlen : 0;
+        dz = moving ? dz / mlen : 0;
         st.pos.x += dx * MOVE * dt;
         st.pos.z += dz * MOVE * dt;
         st.pos.x = Math.max(-X_RANGE - 2, Math.min(X_RANGE + 2, st.pos.x));
@@ -170,7 +173,6 @@
         if (st.pos.y < st.maxY - 22) return gameOver();
 
         player.position.copy(st.pos);
-        const moving = !!(fwd || strafe);
         if (moving) player.rotation.y = Math.atan2(dx, dz);
         player.userData.update(dt, moving);
 

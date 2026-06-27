@@ -12,6 +12,9 @@ body {
   font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
   color: #fff;
   user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+  overscroll-behavior: none;
 }
 
 canvas {
@@ -215,6 +218,71 @@ canvas {
   z-index: 40;
   font-weight: 700;
   color: #95a0c4;
+}
+
+/* ---- Touch controls ---- */
+.gk-touch-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 16;
+  pointer-events: none;
+}
+
+.gk-touch {
+  pointer-events: auto;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.gk-joy {
+  position: fixed;
+  left: 26px;
+  bottom: 28px;
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(4px);
+}
+
+.gk-joy-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 60px;
+  height: 60px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+.gk-tbtn {
+  position: fixed;
+  right: 30px;
+  bottom: 40px;
+  width: 86px;
+  height: 86px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 15px;
+  color: #fff;
+  text-align: center;
+  line-height: 1.05;
+  background: rgba(108, 92, 231, 0.82);
+  border: 2px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
+  transition: transform 0.08s ease, filter 0.08s ease;
+}
+
+.gk-tbtn.active {
+  transform: scale(0.9);
+  filter: brightness(1.25);
 }
 
 .gk-mobile-note {

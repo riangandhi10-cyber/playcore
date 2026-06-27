@@ -144,6 +144,7 @@
 
       const st = { x: 0, z: 0, started: false, over: false, time: 0 };
       const keys = GK.keys();
+      const touch = GK.touchControls({ joystick: true });
 
       GK.topbar("Cube Maze");
       const setHud = GK.hud([{ key: "time", label: "Time", value: "0.0s" }]);
@@ -184,16 +185,17 @@
         st.time += dt;
         setHud("time", st.time.toFixed(1) + "s");
 
-        const fwd = (keys["KeyW"] || keys["ArrowUp"] ? 1 : 0) - (keys["KeyS"] || keys["ArrowDown"] ? 1 : 0);
-        const strafe = (keys["KeyD"] || keys["ArrowRight"] ? 1 : 0) - (keys["KeyA"] || keys["ArrowLeft"] ? 1 : 0);
+        const tv = touch.vector();
+        const fwd = (keys["KeyW"] || keys["ArrowUp"] ? 1 : 0) - (keys["KeyS"] || keys["ArrowDown"] ? 1 : 0) + tv.y;
+        const strafe = (keys["KeyD"] || keys["ArrowRight"] ? 1 : 0) - (keys["KeyA"] || keys["ArrowLeft"] ? 1 : 0) + tv.x;
         const cf = orbit.forward(),
           cr = orbit.right();
         let mx = cf.x * fwd + cr.x * strafe,
           mz = cf.z * fwd + cr.z * strafe;
-        const len = Math.hypot(mx, mz) || 1;
-        const moving = !!(fwd || strafe);
-        const stepX = (mx / len) * MOVE * dt * (moving ? 1 : 0);
-        const stepZ = (mz / len) * MOVE * dt * (moving ? 1 : 0);
+        const len = Math.hypot(mx, mz);
+        const moving = len > 0.18;
+        const stepX = moving ? (mx / len) * MOVE * dt : 0;
+        const stepZ = moving ? (mz / len) * MOVE * dt : 0;
         // axis-separated collision
         if (!collides(st.x + stepX, st.z)) st.x += stepX;
         if (!collides(st.x, st.z + stepZ)) st.z += stepZ;

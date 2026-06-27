@@ -300,21 +300,43 @@ window.GK = (function () {
       },
       { passive: true }
     );
-    // Touch: one-finger drag to orbit
-    let lastTouch = null;
-    window.addEventListener("touchstart", (e) => (lastTouch = e.touches[0]), { passive: true });
+    // Touch: drag anywhere (except on on-screen controls) to orbit.
+    let camId = null,
+      ltX = 0,
+      ltY = 0;
     window.addEventListener(
-      "touchmove",
+      "touchstart",
       (e) => {
-        if (!lastTouch) return;
-        const t = e.touches[0];
-        s.yaw -= (t.clientX - lastTouch.clientX) * s.sensitivity * 2;
-        s.pitch = clamp(s.pitch - (t.clientY - lastTouch.clientY) * s.sensitivity * 2, s.minPitch, s.maxPitch);
-        lastTouch = t;
+        for (const t of e.changedTouches) {
+          if (t.target && t.target.closest && t.target.closest(".gk-touch")) continue;
+          if (camId === null) {
+            camId = t.identifier;
+            ltX = t.clientX;
+            ltY = t.clientY;
+          }
+        }
       },
       { passive: true }
     );
-    window.addEventListener("touchend", () => (lastTouch = null));
+    window.addEventListener(
+      "touchmove",
+      (e) => {
+        for (const t of e.changedTouches) {
+          if (t.identifier === camId) {
+            s.yaw -= (t.clientX - ltX) * s.sensitivity * 1.5;
+            s.pitch = clamp(s.pitch - (t.clientY - ltY) * s.sensitivity * 1.5, s.minPitch, s.maxPitch);
+            ltX = t.clientX;
+            ltY = t.clientY;
+          }
+        }
+      },
+      { passive: true }
+    );
+    const endCam = (e) => {
+      for (const t of e.changedTouches) if (t.identifier === camId) camId = null;
+    };
+    window.addEventListener("touchend", endCam);
+    window.addEventListener("touchcancel", endCam);
 
     return {
       get yaw() {
@@ -339,5 +361,130 @@ window.GK = (function () {
     };
   }
 
-  return { topbar, hud, toast, overlay, handleResize, keys, el, character, orbitCamera };
+  // True on phones/tablets (coarse pointer / touch capable).
+  function isTouch() {
+    return (
+      (window.matchMedia && window.matchMedia("(pointer: coarse)").matches) ||
+      "ontouchstart" in window ||
+      navigator.maxTouchPoints > 0
+    );
+  }
+
+  // On-screen touch controls. opts: { joystick:true, force:false,
+  //   buttons:[{ id, label, left|right, bottom, size, color }] }
+  // Returns { enabled, vector()->{x,y}, isPressed(id), onPress(id, cb) }.
+  function touchControls(opts = {}) {
+    const dir = { x: 0, y: 0 };
+    const pressed = {};
+    const cbs = {};
+    const enabled = opts.force || isTouch();
+    const api = {
+      enabled,
+      vector: () => ({ x: dir.x, y: dir.y }),
+      isPressed: (id) => !!pressed[id],
+      onPress: (id, cb) => (cbs[id] = cb),
+    };
+    if (!enabled) return api;
+
+    const layer = el("div", "gk-touch-layer");
+    document.body.appendChild(layer);
+
+    if (opts.joystick) {
+      const base = el("div", "gk-touch gk-joy");
+      const knob = el("div", "gk-joy-knob");
+      base.appendChild(knob);
+      layer.appendChild(base);
+      let active = null,
+        cx = 0,
+        cy = 0;
+      const R = 56;
+      const place = (t) => {
+        let dx = t.clientX - cx,
+          dy = t.clientY - cy;
+        const len = Math.hypot(dx, dy);
+        const cl = Math.min(len, R);
+        const a = Math.atan2(dy, dx);
+        dx = Math.cos(a) * cl;
+        dy = Math.sin(a) * cl;
+        knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+        dir.x = dx / R;
+        dir.y = -dy / R;
+      };
+      base.addEventListener(
+        "touchstart",
+        (e) => {
+          e.preventDefault();
+          const t = e.changedTouches[0];
+          active = t.identifier;
+          const r = base.getBoundingClientRect();
+          cx = r.left + r.width / 2;
+          cy = r.top + r.height / 2;
+          place(t);
+        },
+        { passive: false }
+      );
+      base.addEventListener(
+        "touchmove",
+        (e) => {
+          e.preventDefault();
+          for (const t of e.changedTouches) if (t.identifier === active) place(t);
+        },
+        { passive: false }
+      );
+      const end = (e) => {
+        for (const t of e.changedTouches)
+          if (t.identifier === active) {
+            active = null;
+            dir.x = 0;
+            dir.y = 0;
+            knob.style.transform = "translate(-50%,-50%)";
+          }
+      };
+      base.addEventListener("touchend", end);
+      base.addEventListener("touchcancel", end);
+    }
+
+    (opts.buttons || []).forEach((b) => {
+      const btn = el("div", "gk-touch gk-tbtn", b.label || "");
+      if (b.color) btn.style.background = b.color;
+      if (b.right != null) btn.style.right = b.right + "px";
+      if (b.left != null) btn.style.left = b.left + "px";
+      if (b.bottom != null) btn.style.bottom = b.bottom + "px";
+      if (b.size) {
+        btn.style.width = b.size + "px";
+        btn.style.height = b.size + "px";
+      }
+      layer.appendChild(btn);
+      const down = (e) => {
+        e.preventDefault();
+        pressed[b.id] = true;
+        btn.classList.add("active");
+        if (cbs[b.id]) cbs[b.id]();
+      };
+      const up = (e) => {
+        e.preventDefault();
+        pressed[b.id] = false;
+        btn.classList.remove("active");
+      };
+      btn.addEventListener("touchstart", down, { passive: false });
+      btn.addEventListener("touchend", up, { passive: false });
+      btn.addEventListener("touchcancel", up, { passive: false });
+    });
+
+    return api;
+  }
+
+  return {
+    topbar,
+    hud,
+    toast,
+    overlay,
+    handleResize,
+    keys,
+    el,
+    character,
+    orbitCamera,
+    isTouch,
+    touchControls,
+  };
 })();

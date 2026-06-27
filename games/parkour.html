@@ -112,6 +112,10 @@
       };
 
       const keys = GK.keys();
+      const touch = GK.touchControls({
+        joystick: true,
+        buttons: [{ id: "jump", label: "JUMP", right: 34, bottom: 44, size: 96 }],
+      });
 
       GK.topbar("Block Parkour");
       const setHud = GK.hud([
@@ -166,23 +170,25 @@
           }
         });
 
-        // Camera-relative input (Roblox style)
-        const fwd = (keys["KeyW"] || keys["ArrowUp"] ? 1 : 0) - (keys["KeyS"] || keys["ArrowDown"] ? 1 : 0);
-        const strafe = (keys["KeyD"] || keys["ArrowRight"] ? 1 : 0) - (keys["KeyA"] || keys["ArrowLeft"] ? 1 : 0);
+        // Camera-relative input (keyboard + touch joystick)
+        const tv = touch.vector();
+        const fwd = (keys["KeyW"] || keys["ArrowUp"] ? 1 : 0) - (keys["KeyS"] || keys["ArrowDown"] ? 1 : 0) + tv.y;
+        const strafe = (keys["KeyD"] || keys["ArrowRight"] ? 1 : 0) - (keys["KeyA"] || keys["ArrowLeft"] ? 1 : 0) + tv.x;
         const f = orbit.forward(),
           r = orbit.right();
         let mx = f.x * fwd + r.x * strafe,
           mz = f.z * fwd + r.z * strafe;
-        const len = Math.hypot(mx, mz) || 1;
-        const moving = !!(fwd || strafe);
-        state.pos.x += (mx / len) * MOVE * dt * (moving ? 1 : 0);
-        state.pos.z += (mz / len) * MOVE * dt * (moving ? 1 : 0);
-
-        if (moving) player.rotation.y = Math.atan2(mx, mz);
+        const len = Math.hypot(mx, mz);
+        const moving = len > 0.18;
+        if (moving) {
+          state.pos.x += (mx / len) * MOVE * dt;
+          state.pos.z += (mz / len) * MOVE * dt;
+          player.rotation.y = Math.atan2(mx, mz);
+        }
         player.userData.update(dt, moving);
 
         // Jump
-        if ((keys["Space"]) && state.grounded) {
+        if ((keys["Space"] || touch.isPressed("jump")) && state.grounded) {
           state.vel.y = JUMP;
           state.grounded = false;
         }
